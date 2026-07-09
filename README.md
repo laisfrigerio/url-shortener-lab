@@ -197,7 +197,7 @@ Checks:
   *Throughput jumped from 118 to 341 req/s (almost 3x higher). \
   *99.7% of requests respond in under 200ms — only 44 out of 20k exceeded this.
 
-**This proves how a simple adjustment can solve a large part of the problem. O Sequential Scan era de fato o gargalo dominante da Fase 1. Com o índice, o Postgres vai direto ao registro e responde em ~4ms.**
+**This proves how a simple adjustment can solve a large part of the problem. The Sequential Scan was indeed the dominant bottleneck of Phase 1. With the index, Postgres goes directly to the record and responds in ~4ms.**
 
 ### Phase 3
 
@@ -231,8 +231,9 @@ Checks:
 | p(90)     | 702.69ms  | 1.11s     | 1.09s      | 7.41ms     | 
 | p(95)     | 1.26s     | 1.25s     | 1.21s      | 8.99ms     | 
 | req/s     | 180.4     | 94.2      | 98.7       | 476        |
-| fail req  | ❌ 42%    | ✅ 0%      | ✅ 0%      | ✅ 0%      | 
-| status ok | 15%       | 100%      | 100%       | 100%       |
+| fail req  | ✅ 0%     | ✅ 0%      | ✅ 0%      | ✅ 0%      | 
+| status ok | 100%      | 100%      | 100%       | 100%       |
+| <200ms    | ❌ 30%    | 99.7%     | 100% ✅     | 100% ✅    |
 
 > **The result for Phase 3 was virtually identical to that of Phase 4 with caching**. Hypothesis: the `sleep(0.1)` between iterations for each VU allows time for the pool to reuse connections, minimizing contention. \
 \
