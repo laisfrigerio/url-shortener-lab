@@ -67,6 +67,21 @@ macOS (Homebrew):
 brew install k6
 ```
 
+## 🖥️ Test environment infrastructure
+
+Host (MacBook Pro):
+
+| Spec      |          Value          |
+|-----------|-------------------------|
+| Chip      |  Apple M3 Pro           |
+| Cores     |  11                     |
+| RAM       |  18 GB                  |
+| OS        |  macOS 26.5.1 (Sequoia) |
+
+**Available limits for Docker: up to 7.75 GiB.**
+
+> Docker Desktop on macOS runs in a Linux VM. The 7.75 GiB is the limit allocated to that VM (not the host total). Containers compete with each other within that pool.
+
 ## Run the Lab
 
 ### 1) Baseline: No index, no pooling, no cache
@@ -201,7 +216,7 @@ Checks:
 
 ### Phase 3
 
-| Metrics   |  Phase 1 |  Phase 2  |  Phase 2  | Improve vs F2 |
+| Metrics   |  Phase 1 |  Phase 2  |  Phase 3  | Improve vs F2 |
 |-----------|----------|-----------|-----------|---------|
 | min       | 59.47ms  | 4.28ms    | 380µs   | -91%  | 
 | avg       | 321.77ms | 46.08ms   | 5.14ms  | -89%  |
@@ -223,14 +238,14 @@ Checks:
 ### Phase 4
 
 | Metrics   |  Phase 1  | Phase 2   | Phase 3    |   Phase 4  |
-|-----------|-----------|-----------|------------|------------| 
-| avg       | 380.07ms  | 471.19ms  | 449.22ms   | 4.78ms     | 
-| med       | 256.17ms  | 268.98ms  | 99.63ms ✅ | 4.44ms     | 
-| min       | 24.1ms    | 5.09ms    | 572µs ✅   |            | 
-| max       | 3.21s     | 2.24s     | 2.62s      | 20.81ms    | 
-| p(90)     | 702.69ms  | 1.11s     | 1.09s      | 7.41ms     | 
-| p(95)     | 1.26s     | 1.25s     | 1.21s      | 8.99ms     | 
-| req/s     | 180.4     | 94.2      | 98.7       | 476        |
+|-----------|-----------|-----------|------------|------------|
+| min       | 59.47ms   | 4.28ms    | 380µs      |            |  
+| avg       | 321.77ms  | 46.08ms   | 5.14ms     | 4.78ms     | 
+| med       | 266.84ms  | 41.63ms   | 4.5ms      | 4.44ms     | 
+| max       | 1.06s     | 210ms     | 105ms      | 20.81ms    | 
+| p(90)     | 579.48ms  | 66.5ms    | 8.26ms     | 7.41ms     | 
+| p(95)     | 646.58ms  | 75.92ms   | 10.29ms    | 8.99ms     | 
+| req/s     | 118       | 341       | 474        | 476        |
 | fail req  | ✅ 0%     | ✅ 0%      | ✅ 0%      | ✅ 0%      | 
 | status ok | 100%      | 100%      | 100%       | 100%       |
 | <200ms    | ❌ 30%    | 99.7%     | 100% ✅     | 100% ✅    |
