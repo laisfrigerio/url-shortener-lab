@@ -8,10 +8,11 @@ export const options = {
 
 export default function () {
     // Busca a URL que inserimos propositalmente no final do seed
-    const res = http.get('http://localhost:3000/nu9999');
+    // redirects: 0 garante que medimos apenas o nosso backend (não o destino do redirect)
+    const res = http.get('http://localhost:3000/nu9999', { redirects: 0 });
 
     check(res, {
-        'status é 200 ou 302': (r) => r.status === 200 || r.status === 302,
+        'status é 302': (r) => r.status === 302,
         'tempo de resposta < 200ms': (r) => r.timings.duration < 200,
     });
 

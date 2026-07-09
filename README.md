@@ -157,6 +157,88 @@ Checks:
 - status is `200` or `302`
 - response time under `200ms`
 
+## Results
+
+### Phase 1
+
+| Metrics   |    1m    |
+|-----------|----------|
+| min       | 59.47ms  |
+| avg       | 321.77ms |
+| med       | 266.84ms |
+| max       | 1.06s    |
+| p(90)     | 579.48ms |
+| p(95)     | 646.58ms |
+| req/s     | 118      |
+| http fail | 0%       |
+| status ok | ✅ 100%  |
+| <200ms    | ❌ 30%   |
+
+> **Note:** Sequential Scan is possible the bottleneck: a p95 of 647ms to find 1 row out of 1 million.
+
+### Phase 2
+
+| Metrics   |  Phase 1 |  Phase 2  | Improve |
+|-----------|----------|-----------|---------|
+| min       | 59.47ms  | 4.28ms    | -93%  | 
+| avg       | 321.77ms | 46.08ms   | -86%  |
+| med       | 266.84ms | 41.63ms   | -84%  |
+| max       | 1.06s    | 210ms     | -80%  |
+| p(90)     | 579.48ms | 66.5ms    | -89%  |
+| p(95)     | 646.58ms | 75.92ms   | -88%  |
+| req/s     | 118      | 341       | +189% |
+| http fail | 0%       | 0%        | -     |
+| status ok | ✅ 100%  | ✅ 100%    | -     |
+| <200ms    | ❌ 30%   | 99.7%     | -     |
+
+> **Note**: Almost 100% of the requests responded in under 200ms. \
+\
+  *The metric reduced the p95 from 647ms to 76ms (an 88% drop). \
+  *Throughput jumped from 118 to 341 req/s (almost 3x higher). \
+  *99.7% of requests respond in under 200ms — only 44 out of 20k exceeded this.
+
+**This proves how a simple adjustment can solve a large part of the problem. O Sequential Scan era de fato o gargalo dominante da Fase 1. Com o índice, o Postgres vai direto ao registro e responde em ~4ms.**
+
+### Phase 3
+
+| Metrics   |  Phase 1 |  Phase 2  |  Phase 2  | Improve vs F2 |
+|-----------|----------|-----------|-----------|---------|
+| min       | 59.47ms  | 4.28ms    | 380µs   | -91%  | 
+| avg       | 321.77ms | 46.08ms   | 5.14ms  | -89%  |
+| med       | 266.84ms | 41.63ms   | 4.5ms   | -89%  |
+| max       | 1.06s    | 210ms     | 105ms   | -50%  |
+| p(90)     | 579.48ms | 66.5ms    | 8.26ms  | -88%  |
+| p(95)     | 646.58ms | 75.92ms   | 10.29ms | -86%  |
+| req/s     | 118      | 341       | 474     | +39%  |
+| http fail | 0%       | 0%        | 0%      | -     |
+| status ok | ✅ 100%  | ✅ 100%   | ✅ 100%  | -     |
+| <200ms    | ❌ 30%   | 99.7%     | 100% ✅  | -     |
+
+> **Note**: Pooling eliminated reconnection overhead. With the pool reusing connections: \
+\
+  *The median dropped from 42ms → 4.5ms (89% drop) \
+  *The p95 dropped from 76ms to 10ms (an 86% drop) \
+  *100% of requests under 200ms
+
+### Phase 4
+
+| Metrics   |  Phase 1  | Phase 2   | Phase 3    |   Phase 4  |
+|-----------|-----------|-----------|------------|------------| 
+| avg       | 380.07ms  | 471.19ms  | 449.22ms   | 4.78ms     | 
+| med       | 256.17ms  | 268.98ms  | 99.63ms ✅ | 4.44ms     | 
+| min       | 24.1ms    | 5.09ms    | 572µs ✅   |            | 
+| max       | 3.21s     | 2.24s     | 2.62s      | 20.81ms    | 
+| p(90)     | 702.69ms  | 1.11s     | 1.09s      | 7.41ms     | 
+| p(95)     | 1.26s     | 1.25s     | 1.21s      | 8.99ms     | 
+| req/s     | 180.4     | 94.2      | 98.7       | 476        |
+| fail req  | ❌ 42%    | ✅ 0%      | ✅ 0%      | ✅ 0%      | 
+| status ok | 15%       | 100%      | 100%       | 100%       |
+
+> **The result for Phase 3 was virtually identical to that of Phase 4 with caching**. Hypothesis: the `sleep(0.1)` between iterations for each VU allows time for the pool to reuse connections, minimizing contention. \
+\
+  *If this applied to the real world, caching with Redis would be over-engineering at this moment. \
+  *Perhaps a test with a higher volume of requests and database records could lead to a scenario where an external cache is a suitable solution.
+
 ## Author
 
 | [<img src="https://avatars.githubusercontent.com/u/20709086?v=4" width="100px;" alt="Lais Frigério"/><br /><sub><b>@laisfrigerio</b></sub>](https://github.com/laisfrigerio)<br /> |
