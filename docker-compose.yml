@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: shortener-db
+    environment:
+      POSTGRES_USER: user_admin
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: shortener_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user_admin -d shortener_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis-cache:
+    image: redis:7-alpine
+    container_name: shortener-redis
+    ports:
+      - "6379:6379"
+
+  app:
+    build: ./backend
+    container_name: shortener-app
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=postgres-db
+      - DB_USER=user_admin
+      - DB_PASSWORD=password123
+      - DB_NAME=shortener_db
+      - REDIS_URL=redis://redis-cache:6379
+      - ENABLE_POOLING=false
+      - ENABLE_INDEX=false
+      - ENABLE_CACHE=false
+    depends_on:
+      postgres-db:
+        condition: service_healthy

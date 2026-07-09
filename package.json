@@ -1,0 +1,9 @@
+{
+  "name": "url-shortener-lab",
+  "version": "1.0.0",
+  "main": "src/server.js",
+  "dependencies": {
+    "pg": "^8.11.0",
+    "redis": "^4.6.0"
+  }
+}
