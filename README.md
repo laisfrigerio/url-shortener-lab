@@ -175,6 +175,7 @@ Checks:
 ## Load Test results
 
 - [MacOS as host](./load-test-results/mac-host.md)
+- [Docker with limited configuration](./load-test-results/docker-limited.md)
 
 ## Author
 

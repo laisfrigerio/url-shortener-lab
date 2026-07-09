@@ -17,12 +17,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
 
   redis-cache:
     image: redis:7-alpine
     container_name: shortener-redis
     ports:
       - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.10'
+          memory: 64M
 
   app:
     build: ./backend
@@ -37,7 +47,12 @@ services:
       - REDIS_URL=redis://redis-cache:6379
       - ENABLE_POOLING=true
       - ENABLE_INDEX=false
-      - ENABLE_CACHE=false
+      - ENABLE_CACHE=true
     depends_on:
       postgres-db:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
