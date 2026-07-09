@@ -45,9 +45,9 @@ services:
       - DB_PASSWORD=password123
       - DB_NAME=shortener_db
       - REDIS_URL=redis://redis-cache:6379
-      - ENABLE_POOLING=true
+      - ENABLE_POOLING=false
       - ENABLE_INDEX=false
-      - ENABLE_CACHE=true
+      - ENABLE_CACHE=false
     depends_on:
       postgres-db:
         condition: service_healthy

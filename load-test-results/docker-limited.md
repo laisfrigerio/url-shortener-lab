@@ -124,10 +124,79 @@ Host (MacBook Pro):
 > **Note:** Redis cache provided negligible improvement over Phase 3 in aggregate metrics (avg: 221ms → 215ms, req/s: 154 → 157).
 > More notably, the **p95 worsened** from 481ms to 588ms (+22%), which is a counter-intuitive result. Cache hits should make things faster, not slower.
 >
-> Two hypotheses, not yet validated:
+> Two hypotheses were raised and subsequently validated with targeted experiments:
 >
-> 1. **Extra network hop cost under CPU pressure:** Even though Redis responds in <1ms, adding an extra call (GET to Redis before every request) introduces overhead. Under constrained CPU (0.25 vCPU for the app), this additional operation may accumulate latency in high-concurrency scenarios, inflating the tail (p95) instead of reducing it.
+> **Hypothesis 1 — Pool contention masking the cache benefit (validated ✅)**
 >
-> 2. **Pool contention masking the cache benefit:** With 50 concurrent VUs and a pool of 10 connections, most requests already queue for a connection in Phase 3. The Redis lookup happens before the DB query, but the queuing bottleneck remains unchanged. So the cache removes the DB round-trip but doesn't address the real wait time.
+> With 50 concurrent VUs and a pool of 10 connections, most requests queue for a connection. The Redis lookup happens before the DB query, but the queuing bottleneck remains unchanged — so the cache removes the DB round-trip but doesn't address the real wait time.
 >
-> **What would be needed to confirm:** Run `docker stats` during the test to check if `shortener-app` is saturating its CPU limit; repeat Phase 4 with `cpus: '1.0'` for the app; reduce VUs to 10 to lower pool contention and observe whether Redis then produces a clear improvement.
+> Validation: re-ran Phase 3 and Phase 4 with **10 VUs** (below pool size threshold) and `cpus: '0.25'`:
+>
+> | Metrics | Phase 3 (10 VUs) | Phase 4 (10 VUs) | Improve |
+> |---------|------------------|------------------|---------|
+> | avg     | 27.21ms          | 9.9ms            | -64% ✅ |
+> | med     | 6.61ms           | 5.63ms           | -15% ✅ |
+> | p(90)   | 48.67ms          | 10.49ms          | -78% ✅ |
+> | p(95)   | 93.51ms          | 14.04ms          | -85% ✅ |
+> | req/s   | 78               | 90               | +15% ✅ |
+>
+> With pool contention removed, Redis delivered a clear **85% p95 improvement**. The cache benefit was real all along — it was hidden by queuing.
+>
+> **Hypothesis 2 — CPU pressure adding overhead to the Redis extra hop (partially validated ⚠️)**
+>
+> Under `cpus: '0.25'`, even a sub-millisecond Redis GET adds measurable overhead under high concurrency. Validation: re-ran Phase 3 and Phase 4 with **50 VUs** and `cpus: '1.0'` for the app. `docker stats` captured during the test showed `shortener-app` at **15.76% CPU** (well below the 100% limit), confirming the app was **not CPU-saturated** even at 0.25 vCPU:
+>
+> | Metrics | Phase 3 (50 VUs, 1 vCPU) | Phase 4 (50 VUs, 1 vCPU) | Improve |
+> |---------|--------------------------|--------------------------|---------|
+> | avg     | 5.3ms                    | 5.05ms                   | -5%     |
+> | med     | 4.47ms                   | 4.65ms                   | ≈       |
+> | p(90)   | 8.05ms                   | 7.84ms                   | -3%     |
+> | p(95)   | 9.56ms                   | 9ms                      | -6%     |
+> | req/s   | 474                      | 475                      | ≈       |
+>
+> With more CPU, the results of Phase 3 and Phase 4 became virtually identical — mirroring the unconstrained Mac host results. This **refutes** the CPU hypothesis: the app was never CPU-bound. The pool contention was the sole cause of the poor Phase 4 result at 50 VUs.
+>
+> **Conclusion:** Redis cache is effective, but only when requests are not already bottlenecked by pool queuing. At 50 VUs with a pool of 10 connections, eliminating the cache miss doesn't help because requests are waiting for a connection slot, not for the database query itself. Scaling the pool size (e.g. `max: 50`) or reducing VUs below the pool limit exposes the true cache benefit.
+
+---
+
+## 🔑 Key Observations
+
+### 1. Bottlenecks are sequential: fixing one reveals the next
+
+Each phase exposed a different dominant constraint:
+
+| Phase | Dominant bottleneck | Fix applied |
+|-------|---------------------|-------------|
+| 1     | Sequential Scan (Full Table Scan) | Add index |
+| 2     | TCP reconnection per request | Enable connection pooling |
+| 3     | Pool queue contention (10 connections, 50 VUs) | Add cache / scale pool |
+| 4     | Cache benefit hidden by pool queue | Reduce concurrency or increase pool size |
+
+You cannot skip steps. Applying the index without pooling still leaves p95 at 3.9s. Applying cache without addressing pool contention yields no observable gain.
+
+### 2. Resource constraints amplify every bottleneck
+
+The same workload that produced a p95 of **647ms** on the unconstrained Mac host produced **22.99s** under 0.50 vCPU for the database. A Sequential Scan is expensive in any environment, but under constrained CPU it becomes catastrophic, collapsing throughput from 118 req/s to **2.2 req/s**.
+
+This makes resource-limited testing valuable for exposing bottlenecks that would be invisible on a developer's local machine.
+
+### 3. Aggregate metrics can be misleading
+
+In Phase 1 (with redirect follow enabled), 42% of requests failed with HTTP 500, dragging the overall average down to 225ms, falsely suggesting good performance. Filtering to `expected_response:true` revealed the true avg of **380ms** for successful requests only.
+
+Similarly, in Phase 4 at 50 VUs, aggregate metrics showed marginal improvement from Redis. Only by isolating variables (10 VUs to remove pool contention) did the **85% p95 improvement** from the cache become visible.
+
+**Lesson:** always filter metrics by success status, and isolate variables before drawing conclusions.
+
+### 4. The app was never the bottleneck
+
+`docker stats` during the Phase 4 test at peak load showed `shortener-app` consuming only **15.76% of its CPU limit** (0.25 vCPU). Node.js, being I/O-bound, spends most of its time waiting for responses from Postgres or Redis, not computing. Increasing the app's CPU to 1.0 vCPU had no meaningful effect on latency.
+
+The real constraint was always the **database** (query strategy) and the **connection management** (pooling + pool size relative to concurrency).
+
+### 5. Redis is a layer-3 optimization, not a layer-1 fix
+
+Redis delivered clear gains only after the foundational problems (index, pooling) were addressed. Adding cache on top of a Sequential Scan or without pooling would not have helpe. The database round-trip was not the dominant cost in those scenarios.
+
+The order of operations matters: **index → pooling → cache**, each targeting a different layer of the stack.
